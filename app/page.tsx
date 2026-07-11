@@ -37,6 +37,23 @@ const gameTitles: Record<Level, string> = { A1: "Picture Match", A2: "Time Bomb"
 
 function shuffle<T>(items: T[]) { return [...items].sort(() => Math.random() - .5); }
 
+function playGameSound(kind: "tick" | "correct" | "wrong" | "explode") {
+  const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  if (!AudioCtx) return;
+  const ctx = new AudioCtx();
+  const tone = (frequency: number, start: number, duration: number, type: OscillatorType = "sine", volume = .12) => {
+    const oscillator = ctx.createOscillator(); const gain = ctx.createGain();
+    oscillator.type = type; oscillator.frequency.setValueAtTime(frequency, ctx.currentTime + start);
+    gain.gain.setValueAtTime(volume, ctx.currentTime + start); gain.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + start + duration);
+    oscillator.connect(gain).connect(ctx.destination); oscillator.start(ctx.currentTime + start); oscillator.stop(ctx.currentTime + start + duration);
+  };
+  if (kind === "tick") tone(850, 0, .06, "square", .035);
+  if (kind === "correct") { tone(523, 0, .13); tone(659, .12, .13); tone(784, .24, .22); }
+  if (kind === "wrong") { tone(220, 0, .18, "sawtooth", .08); tone(150, .13, .3, "sawtooth", .08); }
+  if (kind === "explode") { tone(100, 0, .55, "sawtooth", .16); tone(55, .06, .7, "square", .13); }
+  window.setTimeout(() => ctx.close(), 1200);
+}
+
 export default function Home() {
   const [view, setView] = useState<View>("home");
   const [progress, setProgress] = useState<Record<string, number>>({});
@@ -71,7 +88,7 @@ function Hub({ go, progress }: { go: (v: View) => void; progress: Record<string,
       <div className="level-grid">{LEVELS.map((l,i)=><article className={`level-card l${i+1}`} key={l}><div className="level-top"><span>{levelIcons[l]}</span><b>{l}</b></div><small>Level {i+1} · {levelNames[l]}</small><h3>{gameTitles[l]}</h3><p>{["Match everyday verbs to their meanings.","Beat the clock and choose the right definition.","Build complete phrasal verbs particle by particle.","Spot natural phrasal verbs in authentic sentences.","Put scrambled phrases back in order—fast.","Choose the precise verb for sophisticated contexts."][i]}</p><div className="score-row"><span>{progress[l] !== undefined ? `Best: ${progress[l]}/20` : "Not played yet"}</span><button aria-label={`Play ${l} ${gameTitles[l]}`} onClick={()=>go(l)}>Play →</button></div></article>)}</div>
     </section>
     <section className="sudoku-banner"><div><p className="kicker">Bonus challenge</p><h2>Word Play Sudoku</h2><p>Solve mini logic grids using verb particles instead of numbers.</p></div><button onClick={()=>go("sudoku")}>Open Sudoku →</button></section>
-    <footer><div className="brand"><span>PV</span> Phrasal Lab</div><p>Created by Affiq Azlan · CEFR A1–C2</p><p>Learn a little. Practise often. Use it confidently.</p></footer>
+    <footer><div className="brand"><span>PV</span> Phrasal Lab</div><p>Designed for curious English learners · CEFR A1–C2</p><p>Learn a little. Practise often. Use it confidently.</p></footer>
   </>;
 }
 
@@ -103,13 +120,20 @@ function SpeakingCoach(){
 
 function Game({level,onComplete}:{level:Level;onComplete:(l:Level,s:number)=>void}){
   const bank=useMemo(()=>shuffle(verbs.filter(v=>v.level===level)).slice(0,20),[level]); const [q,setQ]=useState(0); const [score,setScore]=useState(0); const [chosen,setChosen]=useState<string|null>(null); const [built,setBuilt]=useState<string[]>([]); const [finished,setFinished]=useState(false); const target=bank[q];
+  const [timeLeft,setTimeLeft]=useState(10); const [exploded,setExploded]=useState(false);
   const choices=useMemo(()=>shuffle([target,...shuffle(verbs.filter(v=>v.level===level&&v.phrase!==target.phrase)).slice(0,3)]),[target,level]);
-  const answer=(correct:boolean)=>{if(chosen!==null)return;setChosen(correct?"correct":"wrong");if(correct)setScore(s=>s+1)};
-  const next=()=>{if(q===19){const final=score+(chosen==="correct"?0:0);onComplete(level,final);setFinished(true)}else{setQ(x=>x+1);setChosen(null);setBuilt([])}};
+  const answer=(correct:boolean)=>{if(chosen!==null)return;setChosen(correct?"correct":"wrong");playGameSound(correct?"correct":"wrong");if(correct)setScore(s=>s+1)};
+  useEffect(()=>{
+    if(level!=="A2"||chosen!==null||finished)return;
+    const timer=window.setInterval(()=>setTimeLeft(current=>{const next=current-1;if(next>0){playGameSound("tick");return next}window.clearInterval(timer);setExploded(true);setChosen("wrong");playGameSound("explode");return 0}),1000);
+    return()=>window.clearInterval(timer);
+  },[level,q,chosen,finished]);
+  const next=()=>{if(q===19){const final=score+(chosen==="correct"?0:0);onComplete(level,final);setFinished(true)}else{setQ(x=>x+1);setChosen(null);setBuilt([]);setTimeLeft(10);setExploded(false)}};
   if(finished)return <PageShell eyebrow={`${level} complete`} title="Challenge finished" intro="Retrieval practice works best when you return after a short break."><div className="finish-card"><div>{score}<small>/20</small></div><h2>{score>=16?"Outstanding control!":score>=11?"Strong progress!":"A useful first round!"}</h2><p>Your best result has been saved on this device.</p><button onClick={()=>location.reload()}>Return to hub</button></div></PageShell>;
   const particles=shuffle(target.phrase.split(" "));
   return <PageShell eyebrow={`${level} · ${levelNames[level]} · Question ${q+1} of 20`} title={`${levelIcons[level]} ${gameTitles[level]}`} intro={`Score ${score} / 20`}>
     <div className="progress"><span style={{width:`${(q+1)*5}%`}}/></div><article className="game-stage">
+      {level==="A2"&&<div className={`bomb-zone ${timeLeft<=5?"danger":""} ${exploded?"exploded":""}`}><div className="countdown">{timeLeft}</div><div className="bomb"><span className="spark">✦</span><span className="fuse"/><span className="bomb-body">💣</span></div><p>{exploded?"BOOM! Time ran out.":timeLeft<=5?"Quick—the fuse is nearly gone!":"Choose before the bomb explodes."}</p></div>}
       {(level==="A1"||level==="A2"||level==="C2")&&<><p className="question-label">Choose the phrasal verb that means:</p><h2>{target.meaning}</h2><div className="answers">{choices.map(v=><button disabled={chosen!==null} className={chosen&&v===target?(chosen==="correct"?"correct":"reveal"):""} onClick={()=>answer(v.phrase===target.phrase)} key={v.phrase}>{v.phrase}</button>)}</div></>}
       {level==="B1"&&<><p className="question-label">Build the phrasal verb for “{target.meaning}”</p><div className="built">{built.length?built.join(" "):"Tap the words in order"}</div><div className="word-bank">{particles.map((w,i)=><button key={`${w}-${i}`} onClick={()=>setBuilt(x=>[...x,w])}>{w}</button>)}</div><button className="check" onClick={()=>answer(built.join(" ")===target.phrase)}>Check answer</button></>}
       {level==="B2"&&<><p className="question-label">Is the highlighted phrase used naturally?</p><blockquote className="context">{q%2===0?target.example:target.example.replace(target.phrase.split(" ")[1]||"", "about")}</blockquote><div className="answers two"><button onClick={()=>answer(q%2===0)}>Natural ✓</button><button onClick={()=>answer(q%2!==0)}>Not natural ✕</button></div></>}
