@@ -33,7 +33,7 @@ const raw: Record<Level, string[][]> = {
 
 const verbs: Verb[] = LEVELS.flatMap(level => raw[level].map(([phrase, meaning, example, theme]) => ({ phrase, meaning, example, theme, level })));
 
-const gameTitles: Record<Level, string> = { A1: "Picture Match", A2: "Time Bomb", B1: "Particle Builder", B2: "Real or Wrong", C1: "Speed Sort", C2: "Context Master" };
+const gameTitles: Record<Level, string> = { A1: "Picture Match", A2: "Time Bomb", B1: "Phrasal Hangman", B2: "Real or Wrong", C1: "Speed Sort", C2: "Wheel of Fortune" };
 
 const pictureClues: Record<string, { scene: string; caption: string }> = {
   "get up": { scene: "🛏️ ➜ 🧍", caption: "Morning movement" },
@@ -60,7 +60,7 @@ const pictureClues: Record<string, { scene: string; caption: string }> = {
 
 function shuffle<T>(items: T[]) { return [...items].sort(() => Math.random() - .5); }
 
-function playGameSound(kind: "tick" | "correct" | "wrong" | "explode") {
+function playGameSound(kind: "tick" | "correct" | "wrong" | "explode" | "death" | "spin") {
   const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   if (!AudioCtx) return;
   const ctx = new AudioCtx();
@@ -74,6 +74,8 @@ function playGameSound(kind: "tick" | "correct" | "wrong" | "explode") {
   if (kind === "correct") { tone(523, 0, .13); tone(659, .12, .13); tone(784, .24, .22); }
   if (kind === "wrong") { tone(220, 0, .18, "sawtooth", .08); tone(150, .13, .3, "sawtooth", .08); }
   if (kind === "explode") { tone(100, 0, .55, "sawtooth", .16); tone(55, .06, .7, "square", .13); }
+  if (kind === "death") { tone(330, 0, .18, "triangle", .1); tone(247, .17, .2, "triangle", .1); tone(165, .35, .45, "sawtooth", .11); }
+  if (kind === "spin") { for(let i=0;i<9;i++) tone(300+i*45, i*.07, .055, "square", .025); }
   window.setTimeout(() => ctx.close(), 1200);
 }
 
@@ -108,7 +110,7 @@ function Hub({ go, progress }: { go: (v: View) => void; progress: Record<string,
     </header>
     <section className="quick-grid">{featureCards.map(c => <article className="feature-card" key={c.view}><div className="big-icon">{c.icon}</div><small>{c.eyebrow}</small><h2>{c.title}</h2><p>{c.text}</p><button onClick={() => go(c.view)}>{c.cta} →</button></article>)}</section>
     <section id="levels" className="levels-section"><div className="section-heading"><p className="kicker">Your path to fluency</p><h2>Choose your challenge</h2><p>Each level develops a different phrasal-verb skill. Your best score is saved on this device.</p></div>
-      <div className="level-grid">{LEVELS.map((l,i)=><article className={`level-card l${i+1}`} key={l}><div className="level-top"><span>{levelIcons[l]}</span><b>{l}</b></div><small>Level {i+1} · {levelNames[l]}</small><h3>{gameTitles[l]}</h3><p>{["Match everyday verbs to their meanings.","Beat the clock and choose the right definition.","Build complete phrasal verbs particle by particle.","Spot natural phrasal verbs in authentic sentences.","Put scrambled phrases back in order—fast.","Choose the precise verb for sophisticated contexts."][i]}</p><div className="score-row"><span>{progress[l] !== undefined ? `Best: ${progress[l]}/20` : "Not played yet"}</span><button aria-label={`Play ${l} ${gameTitles[l]}`} onClick={()=>go(l)}>Play →</button></div></article>)}</div>
+      <div className="level-grid">{LEVELS.map((l,i)=><article className={`level-card l${i+1}`} key={l}><div className="level-top"><span>{levelIcons[l]}</span><b>{l}</b></div><small>Level {i+1} · {levelNames[l]}</small><h3>{gameTitles[l]}</h3><p>{["Match everyday verbs to their meanings.","Beat the clock and choose the right definition.","Reveal each phrasal verb before the hangman falls.","Spot natural phrasal verbs in authentic sentences.","Sort scrambled phrases before the heat reaches red.","Spin the wheel and solve sophisticated meanings."][i]}</p><div className="score-row"><span>{progress[l] !== undefined ? `Best: ${progress[l]}/20` : "Not played yet"}</span><button aria-label={`Play ${l} ${gameTitles[l]}`} onClick={()=>go(l)}>Play →</button></div></article>)}</div>
     </section>
     <section className="sudoku-banner"><div><p className="kicker">Bonus challenge</p><h2>Word Play Sudoku</h2><p>Solve mini logic grids using verb particles instead of numbers.</p></div><button onClick={()=>go("sudoku")}>Open Sudoku →</button></section>
     <footer><div className="brand"><span>PV</span> Phrasal Lab</div><p>Designed for curious English learners · CEFR A1–C2</p><p>Learn a little. Practise often. Use it confidently.</p></footer>
@@ -142,26 +144,32 @@ function SpeakingCoach(){
 }
 
 function Game({level,onComplete}:{level:Level;onComplete:(l:Level,s:number)=>void}){
-  const bank=useMemo(()=>shuffle(verbs.filter(v=>v.level===level)).slice(0,20),[level]); const [q,setQ]=useState(0); const [score,setScore]=useState(0); const [chosen,setChosen]=useState<string|null>(null); const [built,setBuilt]=useState<string[]>([]); const [finished,setFinished]=useState(false); const target=bank[q];
-  const [timeLeft,setTimeLeft]=useState(10); const [exploded,setExploded]=useState(false);
+  const bank=useMemo(()=>shuffle(verbs.filter(v=>v.level===level)).slice(0,20),[level]);
+  const [q,setQ]=useState(0); const [score,setScore]=useState(0); const [chosen,setChosen]=useState<string|null>(null); const [built,setBuilt]=useState<string[]>([]); const [finished,setFinished]=useState(false); const target=bank[q];
+  const [timeLeft,setTimeLeft]=useState(level==="C1"?5:10); const [exploded,setExploded]=useState(false); const [hanged,setHanged]=useState(false);
+  const [guessed,setGuessed]=useState<string[]>([]); const [wrongLetters,setWrongLetters]=useState(0); const [wheelReady,setWheelReady]=useState(false); const [spinning,setSpinning]=useState(false);
   const choices=useMemo(()=>shuffle([target,...shuffle(verbs.filter(v=>v.level===level&&v.phrase!==target.phrase)).slice(0,3)]),[target,level]);
   const answer=(correct:boolean)=>{if(chosen!==null)return;setChosen(correct?"correct":"wrong");playGameSound(correct?"correct":"wrong");if(correct)setScore(s=>s+1)};
   useEffect(()=>{
-    if(level!=="A2"||chosen!==null||finished)return;
-    const timer=window.setInterval(()=>setTimeLeft(current=>{const next=current-1;if(next>0){playGameSound("tick");return next}window.clearInterval(timer);setExploded(true);setChosen("wrong");playGameSound("explode");return 0}),1000);
+    if(!["A2","B1","C1"].includes(level)||chosen!==null||finished)return;
+    const timer=window.setInterval(()=>setTimeLeft(current=>{const next=current-1;if(next>0){playGameSound("tick");return next}window.clearInterval(timer);setChosen("wrong");if(level==="A2"){setExploded(true);playGameSound("explode")}else if(level==="B1"){setHanged(true);playGameSound("death")}else{playGameSound("wrong")}return 0}),1000);
     return()=>window.clearInterval(timer);
   },[level,q,chosen,finished]);
-  const next=()=>{if(q===19){const final=score+(chosen==="correct"?0:0);onComplete(level,final);setFinished(true)}else{setQ(x=>x+1);setChosen(null);setBuilt([]);setTimeLeft(10);setExploded(false)}};
+  const guessLetter=(letter:string)=>{if(chosen||guessed.includes(letter))return;const next=[...guessed,letter];setGuessed(next);if(target.phrase.includes(letter)){playGameSound("correct");const solved=[...target.phrase].every(c=>c===" "||next.includes(c));if(solved){setChosen("correct");setScore(s=>s+1)}}else{setWrongLetters(w=>w+1);playGameSound("wrong")}};
+  const spinWheel=()=>{if(spinning||wheelReady)return;setSpinning(true);playGameSound("spin");window.setTimeout(()=>{setSpinning(false);setWheelReady(true)},1400)};
+  const next=()=>{if(q===19){onComplete(level,score);setFinished(true)}else{setQ(x=>x+1);setChosen(null);setBuilt([]);setTimeLeft(level==="C1"?5:10);setExploded(false);setHanged(false);setGuessed([]);setWrongLetters(0);setWheelReady(false);setSpinning(false)}};
   if(finished)return <PageShell eyebrow={`${level} complete`} title="Challenge finished" intro="Retrieval practice works best when you return after a short break."><div className="finish-card"><div>{score}<small>/20</small></div><h2>{score>=16?"Outstanding control!":score>=11?"Strong progress!":"A useful first round!"}</h2><p>Your best result has been saved on this device.</p><button onClick={()=>location.reload()}>Return to hub</button></div></PageShell>;
   const particles=shuffle(target.phrase.split(" "));
+  const alphabet="abcdefghijklmnopqrstuvwxyz".split("");
   return <PageShell eyebrow={`${level} · ${levelNames[level]} · Question ${q+1} of 20`} title={`${levelIcons[level]} ${gameTitles[level]}`} intro={`Score ${score} / 20`}>
     <div className="progress"><span style={{width:`${(q+1)*5}%`}}/></div><article className="game-stage">
       {level==="A1"&&<div className="picture-clue" role="img" aria-label={pictureClues[target.phrase]?.caption||target.meaning}><div>{pictureClues[target.phrase]?.scene||"🖼️ ❓"}</div><span>{pictureClues[target.phrase]?.caption||"Match the picture"}</span></div>}
       {level==="A2"&&<div className={`bomb-zone ${timeLeft<=5?"danger":""} ${exploded?"exploded":""}`}><div className="countdown">{timeLeft}</div><div className="bomb"><span className="spark">✦</span><span className="fuse"/><span className="bomb-body">💣</span></div><p>{exploded?"BOOM! Time ran out.":timeLeft<=5?"Quick—the fuse is nearly gone!":"Choose before the bomb explodes."}</p></div>}
-      {(level==="A1"||level==="A2"||level==="C2")&&<><p className="question-label">{level==="A1"?"Which phrasal verb matches the picture?":"Choose the phrasal verb that means:"}</p>{level!=="A1"&&<h2>{target.meaning}</h2>}<div className="answers">{choices.map(v=><button disabled={chosen!==null} className={chosen&&v===target?(chosen==="correct"?"correct":"reveal"):""} onClick={()=>answer(v.phrase===target.phrase)} key={v.phrase}>{v.phrase}</button>)}</div></>}
-      {level==="B1"&&<><p className="question-label">Build the phrasal verb for “{target.meaning}”</p><div className="built">{built.length?built.join(" "):"Tap the words in order"}</div><div className="word-bank">{particles.map((w,i)=><button key={`${w}-${i}`} onClick={()=>setBuilt(x=>[...x,w])}>{w}</button>)}</div><button className="check" onClick={()=>answer(built.join(" ")===target.phrase)}>Check answer</button></>}
+      {(level==="A1"||level==="A2")&&<><p className="question-label">{level==="A1"?"Which phrasal verb matches the picture?":"Choose the phrasal verb that means:"}</p>{level!=="A1"&&<h2>{target.meaning}</h2>}<div className="answers">{choices.map(v=><button disabled={chosen!==null} className={chosen&&v===target?(chosen==="correct"?"correct":"reveal"):""} onClick={()=>answer(v.phrase===target.phrase)} key={v.phrase}>{v.phrase}</button>)}</div></>}
+      {level==="B1"&&<div className={`hangman-game ${timeLeft<=5?"danger":""} ${hanged?"dead":""}`}><div className="hangman-top"><div className="hang-timer">{timeLeft}</div><div className="gallows"><span className="beam"/><span className="rope"/><div className="person"><i className="head">{hanged?"× ×":"• •"}</i><i className="body"/><i className="arm left"/><i className="arm right"/><i className="leg left"/><i className="leg right"/></div></div></div><p className="question-label">Guess the phrasal verb: {target.meaning}</p><div className="hang-word">{[...target.phrase].map((c,i)=><span className={c===" "?"space":""} key={i}>{c===" "?" ":guessed.includes(c)||chosen?c:"_"}</span>)}</div><div className="wrong-meter">Wrong letters: {wrongLetters}</div><div className="keyboard">{alphabet.map(l=><button disabled={!!chosen||guessed.includes(l)} onClick={()=>guessLetter(l)} key={l}>{l}</button>)}</div></div>}
       {level==="B2"&&<><p className="question-label">Is the highlighted phrase used naturally?</p><blockquote className="context">{q%2===0?target.example:target.example.replace(target.phrase.split(" ")[1]||"", "about")}</blockquote><div className="answers two"><button onClick={()=>answer(q%2===0)}>Natural ✓</button><button onClick={()=>answer(q%2!==0)}>Not natural ✕</button></div></>}
-      {level==="C1"&&<><p className="question-label">Arrange the words to match the definition</p><h3>{target.meaning}</h3><div className="built">{built.length?built.join(" "):"Build your answer"}</div><div className="word-bank">{particles.map((w,i)=><button key={`${w}-${i}`} onClick={()=>setBuilt(x=>[...x,w])}>{w}</button>)}</div><button className="check" onClick={()=>answer(built.join(" ")===target.phrase)}>Lock it in</button></>}
+      {level==="C1"&&<div className={`speed-game heat-${timeLeft}`}><div className="speed-clock">{timeLeft}</div><div className="thermometer"><span style={{height:`${(6-timeLeft)*20}%`}}/></div><p className="heat-label">{timeLeft>3?"Warming up":timeLeft>1?"Getting hot!":"RED HOT!"}</p><p className="question-label">Arrange the words: {target.meaning}</p><div className="built">{built.length?built.join(" "):"Build your answer—fast!"}</div><div className="word-bank">{particles.map((w,i)=><button disabled={!!chosen} key={`${w}-${i}`} onClick={()=>setBuilt(x=>[...x,w])}>{w}</button>)}</div><button className="check" disabled={!!chosen} onClick={()=>answer(built.join(" ")===target.phrase)}>Lock it in</button></div>}
+      {level==="C2"&&<div className="wheel-game"><div className="wheel-pointer">▼</div><div className={`fortune-wheel ${spinning?"spinning":""}`}><span>MEANING</span><span>CONTEXT</span><span>PRECISION</span><span>FORTUNE</span></div>{!wheelReady?<><p>Spin to unlock your C2 challenge.</p><button className="spin-button" onClick={spinWheel} disabled={spinning}>{spinning?"Spinning…":"Spin the wheel"}</button></>:<><p className="question-label">The wheel chose: precise meaning</p><h2>{target.meaning}</h2><div className="answers">{choices.map(v=><button disabled={!!chosen} className={chosen&&v===target?(chosen==="correct"?"correct":"reveal"):""} onClick={()=>answer(v.phrase===target.phrase)} key={v.phrase}>{v.phrase}</button>)}</div></>}</div>}
       {chosen&&<div className={`game-feedback ${chosen}`}><strong>{chosen==="correct"?"Correct!":"Not quite."}</strong><p><b>{target.phrase}</b> — {target.meaning}</p><blockquote>{target.example}</blockquote><button onClick={next}>{q===19?"See results":"Next question →"}</button></div>}
     </article></PageShell>;
 }
