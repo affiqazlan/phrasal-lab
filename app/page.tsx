@@ -35,6 +35,29 @@ const verbs: Verb[] = LEVELS.flatMap(level => raw[level].map(([phrase, meaning, 
 
 const gameTitles: Record<Level, string> = { A1: "Picture Match", A2: "Time Bomb", B1: "Particle Builder", B2: "Real or Wrong", C1: "Speed Sort", C2: "Context Master" };
 
+const pictureClues: Record<string, { scene: string; caption: string }> = {
+  "get up": { scene: "🛏️ ➜ 🧍", caption: "Morning movement" },
+  "sit down": { scene: "🧍 ➜ 🪑", caption: "Take a seat" },
+  "stand up": { scene: "🪑 ➜ 🧍", caption: "Rise to your feet" },
+  "wake up": { scene: "😴 ⏰ 😳", caption: "The alarm rings" },
+  "turn on": { scene: "👉 🔘 ➜ 💡", caption: "Make it work" },
+  "turn off": { scene: "👉 🔘 ➜ 🌑", caption: "Stop the power" },
+  "put on": { scene: "👕 ➜ 🧍", caption: "Getting dressed" },
+  "take off": { scene: "🧍 ➜ 👟", caption: "Remove something worn" },
+  "come in": { scene: "🚪 👋 ➡️", caption: "Enter through the door" },
+  "go out": { scene: "🏠 ➡️ 🌆", caption: "Leave for an activity" },
+  "pick up": { scene: "✋ ⬆️ ✏️", caption: "Lift it from below" },
+  "look at": { scene: "👀 ➡️ 🖼️", caption: "Direct your eyes" },
+  "listen to": { scene: "👂 ➡️ 🎵", caption: "Pay attention to sound" },
+  "wait for": { scene: "🧍 ⏳ 🚌", caption: "Stay until it arrives" },
+  "look for": { scene: "🔎 🔑 ❓", caption: "Try to find it" },
+  "come back": { scene: "🚶 ↩️ 🏠", caption: "Return here" },
+  "go back": { scene: "🏫 ↩️ 🚶", caption: "Return there" },
+  "write down": { scene: "💭 ➜ ✍️ 📓", caption: "Put it on paper" },
+  "clean up": { scene: "🧹 ✨ 🏠", caption: "Make the place tidy" },
+  "hurry up": { scene: "⏰ 🏃 💨", caption: "Move more quickly" },
+};
+
 function shuffle<T>(items: T[]) { return [...items].sort(() => Math.random() - .5); }
 
 function playGameSound(kind: "tick" | "correct" | "wrong" | "explode") {
@@ -133,8 +156,9 @@ function Game({level,onComplete}:{level:Level;onComplete:(l:Level,s:number)=>voi
   const particles=shuffle(target.phrase.split(" "));
   return <PageShell eyebrow={`${level} · ${levelNames[level]} · Question ${q+1} of 20`} title={`${levelIcons[level]} ${gameTitles[level]}`} intro={`Score ${score} / 20`}>
     <div className="progress"><span style={{width:`${(q+1)*5}%`}}/></div><article className="game-stage">
+      {level==="A1"&&<div className="picture-clue" role="img" aria-label={pictureClues[target.phrase]?.caption||target.meaning}><div>{pictureClues[target.phrase]?.scene||"🖼️ ❓"}</div><span>{pictureClues[target.phrase]?.caption||"Match the picture"}</span></div>}
       {level==="A2"&&<div className={`bomb-zone ${timeLeft<=5?"danger":""} ${exploded?"exploded":""}`}><div className="countdown">{timeLeft}</div><div className="bomb"><span className="spark">✦</span><span className="fuse"/><span className="bomb-body">💣</span></div><p>{exploded?"BOOM! Time ran out.":timeLeft<=5?"Quick—the fuse is nearly gone!":"Choose before the bomb explodes."}</p></div>}
-      {(level==="A1"||level==="A2"||level==="C2")&&<><p className="question-label">Choose the phrasal verb that means:</p><h2>{target.meaning}</h2><div className="answers">{choices.map(v=><button disabled={chosen!==null} className={chosen&&v===target?(chosen==="correct"?"correct":"reveal"):""} onClick={()=>answer(v.phrase===target.phrase)} key={v.phrase}>{v.phrase}</button>)}</div></>}
+      {(level==="A1"||level==="A2"||level==="C2")&&<><p className="question-label">{level==="A1"?"Which phrasal verb matches the picture?":"Choose the phrasal verb that means:"}</p>{level!=="A1"&&<h2>{target.meaning}</h2>}<div className="answers">{choices.map(v=><button disabled={chosen!==null} className={chosen&&v===target?(chosen==="correct"?"correct":"reveal"):""} onClick={()=>answer(v.phrase===target.phrase)} key={v.phrase}>{v.phrase}</button>)}</div></>}
       {level==="B1"&&<><p className="question-label">Build the phrasal verb for “{target.meaning}”</p><div className="built">{built.length?built.join(" "):"Tap the words in order"}</div><div className="word-bank">{particles.map((w,i)=><button key={`${w}-${i}`} onClick={()=>setBuilt(x=>[...x,w])}>{w}</button>)}</div><button className="check" onClick={()=>answer(built.join(" ")===target.phrase)}>Check answer</button></>}
       {level==="B2"&&<><p className="question-label">Is the highlighted phrase used naturally?</p><blockquote className="context">{q%2===0?target.example:target.example.replace(target.phrase.split(" ")[1]||"", "about")}</blockquote><div className="answers two"><button onClick={()=>answer(q%2===0)}>Natural ✓</button><button onClick={()=>answer(q%2!==0)}>Not natural ✕</button></div></>}
       {level==="C1"&&<><p className="question-label">Arrange the words to match the definition</p><h3>{target.meaning}</h3><div className="built">{built.length?built.join(" "):"Build your answer"}</div><div className="word-bank">{particles.map((w,i)=><button key={`${w}-${i}`} onClick={()=>setBuilt(x=>[...x,w])}>{w}</button>)}</div><button className="check" onClick={()=>answer(built.join(" ")===target.phrase)}>Lock it in</button></>}
