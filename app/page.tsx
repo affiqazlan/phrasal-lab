@@ -119,7 +119,7 @@ function Hub({ go, progress }: { go: (v: View) => void; progress: Record<string,
       <div className="level-grid">{LEVELS.map((l,i)=><article className={`level-card l${i+1}`} key={l}><div className="level-top"><span>{levelIcons[l]}</span><b>{l}</b></div><small>Level {i+1} · {levelNames[l]}</small><h3>{gameTitles[l]}</h3><p>{["Match everyday verbs to their meanings.","Beat the clock and choose the right definition.","Spin the wheel and solve intermediate meanings.","Spot natural phrasal verbs in authentic sentences.","Sort scrambled phrases before the heat reaches red.","Reveal advanced phrasal verbs before the hangman falls."][i]}</p><div className="score-row"><span>{progress[l] !== undefined ? `Best: ${progress[l]}/20` : "Not played yet"}</span><button aria-label={`Play ${l} ${gameTitles[l]}`} onClick={()=>go(l)}>Play →</button></div></article>)}</div>
     </section>
     <section className="sudoku-banner"><div><p className="kicker">Bonus challenge</p><h2>Word Play Sudoku</h2><p>Solve mini logic grids using verb particles instead of numbers.</p></div><button onClick={()=>go("sudoku")}>Open Sudoku →</button></section>
-    <footer><div className="brand"><span>PV</span> Phrasal Lab</div><p>Designed by Affiq Azlan · CEFR A1–C2</p><p>Faculty of Language Studies and Human Development. Universiti Malaysia Kelantan.</p></footer>
+    <footer><div className="brand"><span>PV</span> Phrasal Lab · CEFR A1–C2</div><p>Designed by Affiq Azlan</p><p>Faculty of Language Studies and Human Development. Universiti Malaysia Kelantan.</p></footer>
   </>;
 }
 
