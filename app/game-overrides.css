@@ -1,0 +1,17 @@
+.speed-game.heat-6 .speed-clock,
+.speed-game.heat-5 .speed-clock,
+.speed-game.heat-4 .speed-clock {
+  background: #ef7d29;
+}
+
+.speed-game.heat-3 .speed-clock,
+.speed-game.heat-2 .speed-clock {
+  background: #e94b26;
+  animation: countPulse .45s infinite;
+}
+
+.speed-game.heat-1 .speed-clock,
+.speed-game.heat-0 .speed-clock {
+  background: #d52c27;
+  animation: countPulse .2s infinite;
+}
